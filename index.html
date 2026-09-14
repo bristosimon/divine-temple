@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Divine Blessing Temple</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#080500;color:#fff;font-family:Georgia,"Times New Roman",serif}
+#app{position:fixed;inset:0;background:#080500}
+video{position:absolute;width:100%;height:100%;object-fit:cover;transform:scaleX(-1);filter:saturate(.82) contrast(1.05) brightness(.72)}
+.overlay{position:absolute;inset:0;background:
+radial-gradient(circle at 50% 35%,rgba(255,186,65,.10),transparent 35%),
+linear-gradient(to bottom,rgba(0,0,0,.25),rgba(0,0,0,.60))}
+#temple{position:absolute;inset:0;pointer-events:none;opacity:.9}
+#temple:before{content:"";position:absolute;left:50%;top:0;transform:translateX(-50%);
+width:min(90vw,650px);height:100%;background:
+linear-gradient(90deg,transparent 0 8%,rgba(197,139,39,.12) 8% 10%,transparent 10% 90%,rgba(197,139,39,.12) 90% 92%,transparent 92%);
+border-left:2px solid rgba(255,205,100,.22);border-right:2px solid rgba(255,205,100,.22)}
+#bell{position:absolute;top:6%;left:50%;transform:translateX(-50%);font-size:48px;opacity:.7;text-shadow:0 0 25px #f5bd57}
+#status{position:absolute;left:50%;bottom:7%;transform:translateX(-50%);width:90%;text-align:center}
+#hint{font-size:18px;letter-spacing:1px;text-shadow:0 2px 8px #000;transition:.4s}
+#blessing{display:none;font-size:clamp(26px,6vw,48px);line-height:1.25;color:#ffe7ad;text-shadow:0 0 20px rgba(255,181,52,.7),0 3px 8px #000;animation:appear 1.2s ease}
+#small{margin-top:14px;font:13px Arial,sans-serif;opacity:.65}
+#start{position:absolute;z-index:5;inset:0;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle,rgba(67,39,8,.95),rgba(3,2,0,.98))}
+.card{text-align:center;width:min(90%,500px);padding:32px 22px;border:1px solid rgba(255,207,112,.35);border-radius:22px;background:rgba(25,13,2,.78);box-shadow:0 0 60px rgba(255,164,39,.12)}
+.card h1{font-size:32px;margin:0 0 10px;color:#ffe1a0}.card p{line-height:1.6;color:#dbc9a8}
+button{border:0;border-radius:999px;padding:15px 28px;font-size:17px;background:#d49a36;color:#160d02;font-weight:bold;box-shadow:0 5px 25px rgba(212,154,54,.3)}
+@keyframes appear{from{opacity:0;transform:translateY(15px) scale(.97)}to{opacity:1;transform:none}}
+.flash{animation:flash .9s ease}
+@keyframes flash{0%{background:rgba(255,202,86,0)}35%{background:rgba(255,202,86,.18)}100%{background:rgba(255,202,86,0)}}
+</style>
+</head>
+<body>
+<div id="app">
+  <video id="video" autoplay muted playsinline></video>
+  <div class="overlay" id="overlay"></div>
+  <div id="temple"></div>
+  <div id="bell">🔔</div>
+  <div id="status">
+    <div id="hint">Stand before the temple and bow with devotion</div>
+    <div id="blessing"></div>
+    <div id="small">Camera remains on • Bow slowly for a blessing</div>
+  </div>
+  <div id="start">
+    <div class="card">
+      <h1>🛕 Divine Blessing</h1>
+      <p>Place the phone where visitors can stand in front of it. When a person bows, the temple will respond with a divine blessing.</p>
+      <button id="begin">Enter Temple</button>
+      <div style="margin-top:14px;font:12px Arial;color:#a99578">Camera permission is required.</div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<script>
+const video=document.getElementById('video');
+const start=document.getElementById('start');
+const begin=document.getElementById('begin');
+const hint=document.getElementById('hint');
+const blessing=document.getElementById('blessing');
+const overlay=document.getElementById('overlay');
+
+const blessings=[
+"Whatever good deeds you have done, may all my blessings be with you. Walk your path with faith and kindness.",
+"My child, your good deeds are seen. May peace, prosperity and happiness always remain with you. My blessings are with you.",
+"Bow with faith and rise with courage. May divine grace guide every step of your journey.",
+"May the goodness in your heart return to you many times over. May you always be protected and blessed.",
+"Your devotion has reached me. Go forward without fear. My blessings will always be with you."
+];
+
+let triggered=false, bowedSince=0, lastTrigger=0, cameraStream=null, voiceReady=false;
+
+function speak(text){
+  if(!('speechSynthesis' in window)) return;
+  speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(text);
+  u.rate=.78; u.pitch=.72; u.volume=1;
+  const voices=speechSynthesis.getVoices();
+  const preferred=voices.find(v=>/en-IN|en-GB|en-US/i.test(v.lang));
+  if(preferred) u.voice=preferred;
+  speechSynthesis.speak(u);
+}
+function ring(){
+  try{
+    const C=window.AudioContext||window.webkitAudioContext, c=new C();
+    const now=c.currentTime;
+    [660,880,1100].forEach((f,i)=>{
+      const o=c.createOscillator(),g=c.createGain();
+      o.type='sine';o.frequency.value=f;
+      g.gain.setValueAtTime(.0001,now);
+      g.gain.exponentialRampToValueAtTime(.18/(i+1),now+.02);
+      g.gain.exponentialRampToValueAtTime(.0001,now+2.2);
+      o.connect(g);g.connect(c.destination);o.start(now);o.stop(now+2.3);
+    });
+  }catch(e){}
+}
+function triggerBlessing(){
+  if(triggered || Date.now()-lastTrigger<5000) return;
+  triggered=true;lastTrigger=Date.now();
+  const text=blessings[Math.floor(Math.random()*blessings.length)];
+  hint.style.display='none'; blessing.textContent=text; blessing.style.display='block';
+  overlay.classList.add('flash'); ring();
+  setTimeout(()=>speak(text),650);
+  setTimeout(()=>{blessing.style.display='none';hint.style.display='block';hint.textContent='May divine blessings always be with you';overlay.classList.remove('flash')},8500);
+  setTimeout(()=>{triggered=false;hint.textContent='Stand before the temple and bow with devotion'},10500);
+}
+
+const pose=new Pose({locateFile:(file)=>`https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`});
+pose.setOptions({modelComplexity:1,smoothLandmarks:true,enableSegmentation:false,minDetectionConfidence:.55,minTrackingConfidence:.55});
+
+pose.onResults(res=>{
+  const lm=res.poseLandmarks;
+  if(!lm) { bowedSince=0; return; }
+  const nose=lm[0], lShoulder=lm[11], rShoulder=lm[12], lHip=lm[23], rHip=lm[24];
+  if(!nose||!lShoulder||!rShoulder||!lHip||!rHip){bowedSince=0;return}
+  const sy=(lShoulder.y+rShoulder.y)/2, hy=(lHip.y+rHip.y)/2;
+  const headDrop=nose.y-sy;
+  const torso=hy-sy;
+  // Bow heuristic: head drops substantially toward/below the shoulder line
+  // while the torso angle changes. Also require the person to be reasonably centered.
+  const centered=((lShoulder.x+rShoulder.x)/2>.18 && (lShoulder.x+rShoulder.x)/2<.82);
+  const bent=headDrop>.10 && torso>.18 && centered;
+  if(bent){
+    if(!bowedSince) bowedSince=performance.now();
+    if(performance.now()-bowedSince>650) triggerBlessing();
+  }else bowedSince=0;
+});
+
+async function startCamera(){
+  cameraStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'user'},width:{ideal:1280},height:{ideal:720}},audio:false});
+  video.srcObject=cameraStream;
+  const cam=new Camera(video,{onFrame:async()=>{await pose.send({image:video})},width:1280,height:720});
+  cam.start();
+}
+begin.onclick=async()=>{
+  try{
+    await startCamera();
+    start.style.display='none';
+    if('speechSynthesis' in window) speechSynthesis.getVoices();
+  }catch(e){
+    alert('Camera could not be started. Please allow camera access and open this page over HTTPS (or localhost).');
+  }
+};
+</script>
+</body>
+</html>
